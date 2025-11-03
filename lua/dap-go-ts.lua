@@ -24,6 +24,82 @@ local subtests_query = [[
   (#eq? @run "Run")) @parent
 ]]
 
+local testify_suite_query = [[
+(source_file
+  [
+    ;; Pattern 1: Suite type before test function
+    (
+      (method_declaration
+        receiver: (parameter_list
+          (parameter_declaration
+            type: (pointer_type
+              (type_identifier) @method.suite.type)))
+        name: (field_identifier) @method.name
+        (#match? @method.name "^Test.*")) @method.node
+      
+      (function_declaration
+        name: (identifier) @test.name
+        body: (block
+          (expression_statement
+            (call_expression
+              function: (selector_expression
+                operand: (identifier) @suite.pkg
+                field: (field_identifier) @run)
+              arguments: (argument_list
+                (_)
+                [
+                  (call_expression
+                    function: (identifier) @new
+                    arguments: (argument_list
+                      (type_identifier) @runner.suite.type)
+                    (#eq? @new "new"))
+                  (unary_expression
+                    operand: (composite_literal
+                      type: (type_identifier) @runner.suite.type))
+                ])
+              (#eq? @suite.pkg "suite")
+              (#eq? @run "Run"))))
+        (#match? @test.name "^Test.*")) @test.node
+    )
+    
+    ;; Pattern 2: Test function before suite type
+    (
+      (function_declaration
+        name: (identifier) @test.name
+        body: (block
+          (expression_statement
+            (call_expression
+              function: (selector_expression
+                operand: (identifier) @suite.pkg
+                field: (field_identifier) @run)
+              arguments: (argument_list
+                (_)
+                [
+                  (call_expression
+                    function: (identifier) @new
+                    arguments: (argument_list
+                      (type_identifier) @runner.suite.type)
+                    (#eq? @new "new"))
+                  (unary_expression
+                    operand: (composite_literal
+                      type: (type_identifier) @runner.suite.type))
+                ])
+              (#eq? @suite.pkg "suite")
+              (#eq? @run "Run"))))
+        (#match? @test.name "^Test.*")) @test.node
+      
+      (method_declaration
+        receiver: (parameter_list
+          (parameter_declaration
+            type: (pointer_type
+              (type_identifier) @method.suite.type)))
+        name: (field_identifier) @method.name
+        (#match? @method.name "^Test.*")) @method.node
+    )
+  ]
+)
+]]
+
 local function format_subtest(testcase, test_tree)
   local parent
   if testcase.parent then
@@ -122,6 +198,31 @@ local function get_closest_test()
         end
       end
     end
+    table.insert(test_tree, test_match)
+  end
+
+  local testify_query = vim.treesitter.query.parse(ft, testify_suite_query)
+  assert(testify_query, "could not parse testify suite query")
+  for _, match, _ in testify_query:iter_matches(root, 0, 0, stop_row, { all = true }) do
+    local test_match = {}
+    for id, nodes in pairs(match) do
+      for _, node in ipairs(nodes) do
+        local capture = testify_query.captures[id]
+        if capture == "method.name" then
+          local name = vim.treesitter.get_node_text(node, 0)
+          test_match.name = name
+        end
+        if capture == "method.node" then
+          test_match.node = node
+        end
+        if capture == "test.name" then
+          local name = vim.treesitter.get_node_text(node, 0)
+          test_match.parent = name
+        end
+      end
+    end
+    test_match.name = test_match.parent .. "/" .. test_match.name
+    test_match.parent = nil
     table.insert(test_tree, test_match)
   end
 
