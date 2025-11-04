@@ -97,6 +97,7 @@ local testify_suite_query = [[
         (#match? @method.name "^Test.*")) @method.node
     )
   ]
+  (#eq? @method.suite.type @runner.suite.type)
 )
 ]]
 
